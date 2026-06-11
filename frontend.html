@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- 🔗 URL da API (atualize com seu domínio Render) -->
+<meta name="api-url" content="https://seu-backend.onrender.com">
 <title>Porto do Itaqui — Simulador M/M/4</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
@@ -77,7 +79,7 @@ tailwind.config = {
     <div class="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-lg select-none">⚓</div>
     <div>
       <div class="text-[14px] font-semibold text-white leading-none">Porto do Itaqui</div>
-      <div class="text-[10px] text-ocean-300 mt-0.5">Simulador M/M/4 · Teoria das Filas · UNDB 2026.1</div>
+      <div class="text-[10px] text-ocean-300 mt-0.5">Simulador M/M/4</div>
     </div>
   </div>
 
@@ -391,6 +393,13 @@ tailwind.config = {
      SCRIPT
 ══════════════════════════════════════════════ -->
 <script>
+// 🔗 Injetar URL da API a partir da meta tag
+const apiMeta = document.querySelector('meta[name="api-url"]');
+if (apiMeta) {
+  window.__API_URL__ = apiMeta.getAttribute('content');
+}
+</script>
+<script>
 /* ─── Configuração ─────────────────────────────────────── */
 // Detecta automaticamente a URL da API
 // Em desenvolvimento local: http://localhost:8000
@@ -404,9 +413,13 @@ const API_URL = (() => {
   if (location.protocol === 'file:') {
     return 'http://localhost:8000';
   }
-  // Em produção, verifica variável de ambiente (Vercel)
-  // Padrão: mesma origem (útil se ambos estão no mesmo domínio)
-  // Para Render separado, adicione a URL manualmente no Vercel
+  // Em produção (Vercel):
+  // Tenta obter da window (Vercel injeta via <meta> ou <script>)
+  // Fallback: usa a mesma origem se não configurado
+  // ⚠️ IMPORTANTE: Configure NEXT_PUBLIC_API_URL no Vercel!
+  if (window.__API_URL__) {
+    return window.__API_URL__;
+  }
   return location.origin;
 })();
 
