@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Porto do Itaqui — Simulador M/M/4</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans:  ['-apple-system', 'Segoe UI', 'system-ui', 'sans-serif'],
+        mono:  ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+      },
+      colors: {
+        ocean: {
+          950: '#06090f',
+          900: '#0a0f18',
+          850: '#0d1520',
+          800: '#111d2b',
+          700: '#172233',
+          600: '#1d2c3f',
+          500: '#24374d',
+          400: '#2d4560',
+          300: '#3d5a70',
+          200: '#4f7086',
+          100: '#7fa8c4',
+          50:  '#aac5d8',
+        },
+      },
+      animation: {
+        blink: 'blink 2s ease-in-out infinite',
+      },
+      keyframes: {
+        blink: {
+          '0%, 100%': { opacity: '1' },
+          '50%':      { opacity: '0.2' },
+        },
+      },
+    },
+  },
+}
+</script>
+<style>
+  /* Scrollbar — Tailwind não tem utilities para isso */
+  ::-webkit-scrollbar            { width: 4px; }
+  ::-webkit-scrollbar-track      { background: transparent; }
+  ::-webkit-scrollbar-thumb      { background: #1d2c3f; border-radius: 2px; }
+
+  /* Priority badges — 3 estados fixos, usados no JS render */
+  .pb {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: .3px;
+  line-height: 1;
+  }
+  .pb-1 { background: rgba(239,68,68,.15);  color: #f87171; border: 1px solid rgba(239,68,68,.35); }
+  .pb-2 { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.35); }
+  .pb-3 { background: rgba(100,116,139,.15); color: #94a3b8; border: 1px solid rgba(100,116,139,.25); }
+</style>
+</head>
+
+<body class="bg-ocean-950 text-ocean-50 font-sans text-[13px] flex flex-col h-screen overflow-hidden">
+
+<!-- ══════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════ -->
+<header class="flex items-center gap-4 px-5 h-14 bg-ocean-900 border-b border-ocean-700 shrink-0">
+
+  <!-- Marca -->
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-lg select-none">⚓</div>
+    <div>
+      <div class="text-[14px] font-semibold text-white leading-none">Porto do Itaqui</div>
+      <div class="text-[10px] text-ocean-300 mt-0.5">Simulador M/M/4 · Teoria das Filas · UNDB 2026.1</div>
+    </div>
+  </div>
+
+  <div class="w-px h-7 bg-ocean-700 mx-1"></div>
+
+  <!-- Relógio -->
+  <div class="flex flex-col items-center gap-0.5">
+    <div id="hd-clock"
+      class="font-mono text-[20px] font-bold text-blue-400 tabular-nums px-4 py-1.5
+             bg-ocean-850 border border-ocean-700 rounded-lg tracking-tight">
+      T = 0.0h
+    </div>
+  </div>
+
+  <!-- Política ativa -->
+  <span id="hd-pol"
+    class="text-[11px] px-3 py-1 rounded-full border border-blue-500/30
+           bg-blue-500/10 text-blue-400 whitespace-nowrap">
+    —
+  </span>
+
+  <!-- Ações -->
+  <div class="ml-auto flex gap-2">
+    <button onclick="doDemo()"
+      class="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-md
+             border border-ocean-600 bg-ocean-850 text-ocean-100
+             hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+      Cenário Demo
+    </button>
+    <button onclick="doReset()"
+      class="text-[12px] px-3 py-1.5 rounded-md border border-red-500/30
+             text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-all">
+      Reiniciar
+    </button>
+  </div>
+
+</header>
+
+
+<!-- ══════════════════════════════════════════════
+     MAIN — 3 COLUNAS
+══════════════════════════════════════════════ -->
+<div class="grid grid-cols-[300px_1fr_272px] flex-1 min-h-0 overflow-hidden">
+
+  <!-- ── COL 1: Berços + Métricas ── -->
+  <div class="flex flex-col border-r border-ocean-700 overflow-hidden">
+
+    <div class="px-4 py-2.5 border-b border-ocean-700 shrink-0
+                text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px]">
+      Berços Operacionais
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-3 space-y-3">
+
+      <!-- Cards dos berços (renderizado via JS) -->
+      <div class="grid grid-cols-2 gap-2" id="berths"></div>
+
+      <!-- Legenda de compatibilidade -->
+      <div class="p-3 bg-ocean-900 rounded-xl border border-ocean-700">
+        <div class="text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px] mb-2.5">
+          Compatibilidade
+        </div>
+        <div class="space-y-1.5 text-[10px] text-ocean-200 leading-none">
+          <div class="flex items-center gap-2">
+            <span class="w-5 text-center font-bold text-emerald-400 text-xs">B1</span>
+            <span class="text-ocean-300">Granéis + Marinha</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-5 text-center font-bold text-blue-400 text-xs">B2</span>
+            <span class="text-ocean-300">Contêineres + Refrig. + Marinha</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-5 text-center font-bold text-amber-400 text-xs">B3</span>
+            <span class="text-ocean-300">Combustíveis <em>somente</em></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-5 text-center font-bold text-purple-400 text-xs">B4</span>
+            <span class="text-ocean-300">Multiuso — aceita todos</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div>
+        <div class="text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px] mb-2">
+          Indicadores — Teoria das Filas
+        </div>
+        <div class="grid grid-cols-3 gap-1.5" id="metrics"></div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ── COL 2: Fila de Espera ── -->
+  <div class="flex flex-col border-r border-ocean-700 overflow-hidden">
+
+    <div class="px-4 py-2.5 border-b border-ocean-700 shrink-0
+                text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px]
+                flex items-center gap-2">
+      Fila de Espera
+      <span id="q-cnt"
+        class="px-2 py-0.5 bg-ocean-850 border border-ocean-700 rounded-full
+               text-[11px] text-white font-mono tabular-nums">
+        0
+      </span>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-3" id="q-list">
+      <div class="flex flex-col items-center justify-center h-32 gap-2 text-ocean-400 text-[12px]">
+        <span class="text-3xl opacity-30">⚓</span>
+        Nenhum navio aguardando
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ── COL 3: Controles ── -->
+  <div class="flex flex-col overflow-hidden">
+
+    <div class="px-4 py-2.5 border-b border-ocean-700 shrink-0
+                text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px]">
+      Controles
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-3.5 space-y-4">
+
+      <!-- Adicionar navio -->
+      <section>
+        <div class="text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px] mb-3">
+          Adicionar Navio
+        </div>
+        <div class="space-y-2">
+
+          <div>
+            <label class="block text-[10px] text-ocean-300 mb-1">Nome</label>
+            <input id="f-nome" type="text" placeholder="Ex: MV Amazonas"
+              class="w-full bg-ocean-850 text-white border border-ocean-700 rounded-lg px-3 py-2
+                     text-[12px] placeholder-ocean-500 focus:outline-none focus:border-blue-500/60
+                     transition-colors">
+          </div>
+
+          <div>
+            <label class="block text-[10px] text-ocean-300 mb-1">Tipo de carga</label>
+            <select id="f-tipo"
+              class="w-full bg-ocean-850 text-white border border-ocean-700 rounded-lg px-3 py-2
+                     text-[12px] focus:outline-none focus:border-blue-500/60 transition-colors cursor-pointer">
+              <option value="granel">Granéis sólidos — μ=10h (P3)</option>
+              <option value="conteiner">Contêineres — μ=8h (P3)</option>
+              <option value="combustivel">Combustíveis — μ=12h (P3)</option>
+              <option value="marinha">Marinha / Carga viva — μ=6h ★ Máxima</option>
+              <option value="cont_refrig">Cont. Refrigerado — μ=8h ▲ Alta</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[10px] text-ocean-300 mb-1">
+              Tempo de serviço (h) — vazio usa exponencial(μ)
+            </label>
+            <input id="f-ts" type="number" placeholder="automático" min="0.5" step="0.5"
+              class="w-full bg-ocean-850 text-white border border-ocean-700 rounded-lg px-3 py-2
+                     text-[12px] placeholder-ocean-500 focus:outline-none focus:border-blue-500/60
+                     transition-colors">
+          </div>
+
+          <button onclick="doAdd()"
+            class="w-full text-[12px] font-semibold py-2 rounded-lg
+                   bg-blue-600 hover:bg-blue-500 text-white transition-colors">
+            + Adicionar à Fila
+          </button>
+
+        </div>
+      </section>
+
+      <div class="h-px bg-ocean-700"></div>
+
+      <!-- Política de sequenciamento -->
+      <section>
+        <div class="text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px] mb-3">
+          Política de Sequenciamento
+        </div>
+
+        <select id="f-pol" onchange="doPol()"
+          class="w-full bg-ocean-850 text-white border border-ocean-700 rounded-lg px-3 py-2
+                 text-[12px] focus:outline-none focus:border-blue-500/60 transition-colors
+                 cursor-pointer mb-2">
+          <option value="prio_np">Prioridade Não Preemptiva</option>
+          <option value="fifo">FIFO — Primeiro a Chegar</option>
+          <option value="sjf">SJF — Menor Serviço Primeiro</option>
+          <option value="lcfs">LCFS — Último a Chegar</option>
+        </select>
+
+        <div class="p-2.5 bg-ocean-900 rounded-lg border border-ocean-700
+                    text-[10px] text-ocean-300 space-y-1 leading-relaxed">
+          <div><span class="text-ocean-100 font-medium">Prio NP</span> — classes 1→3, FIFO na classe</div>
+          <div><span class="text-ocean-100 font-medium">SJF</span> — menor tempo de serviço primeiro</div>
+          <div><span class="text-ocean-100 font-medium">LCFS</span> — mais recente atendido primeiro</div>
+        </div>
+      </section>
+
+      <div class="h-px bg-ocean-700"></div>
+
+      <!-- Avançar tempo -->
+      <section>
+        <div class="text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px] mb-3">
+          Avançar Tempo
+        </div>
+
+        <div class="grid grid-cols-3 gap-1.5 mb-2">
+          <button onclick="doAdv(1)"
+            class="text-[12px] py-1.5 rounded-lg border border-ocean-700 bg-ocean-850
+                   text-ocean-100 hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+            +1h
+          </button>
+          <button onclick="doAdv(2)"
+            class="text-[12px] py-1.5 rounded-lg border border-ocean-700 bg-ocean-850
+                   text-ocean-100 hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+            +2h
+          </button>
+          <button onclick="doAdv(4)"
+            class="text-[12px] py-1.5 rounded-lg border border-ocean-700 bg-ocean-850
+                   text-ocean-100 hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+            +4h
+          </button>
+          <button onclick="doAdv(6)"
+            class="text-[12px] py-1.5 rounded-lg border border-ocean-700 bg-ocean-850
+                   text-ocean-100 hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+            +6h
+          </button>
+          <button onclick="doAdv(12)"
+            class="text-[12px] py-1.5 rounded-lg border border-ocean-700 bg-ocean-850
+                   text-ocean-100 hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+            +12h
+          </button>
+          <button onclick="doAdv(24)"
+            class="text-[12px] py-1.5 rounded-lg border border-ocean-700 bg-ocean-850
+                   text-ocean-100 hover:border-ocean-500 hover:bg-ocean-800 transition-all">
+            +24h
+          </button>
+        </div>
+
+        <div class="flex gap-2">
+          <input id="f-adv" type="number" placeholder="horas customizadas" min="0.5" step="0.5"
+            class="flex-1 bg-ocean-850 text-white border border-ocean-700 rounded-lg px-3 py-2
+                   text-[12px] placeholder-ocean-500 focus:outline-none focus:border-blue-500/60
+                   transition-colors">
+          <button onclick="doAdvC()"
+            class="px-4 text-[12px] font-semibold rounded-lg
+                   bg-blue-600 hover:bg-blue-500 text-white transition-colors">
+            Ir
+          </button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     MODAL DE CONFIRMAÇÃO
+══════════════════════════════════════════════ -->
+<div id="modal-confirm" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+  <!-- Backdrop -->
+  <div class="absolute inset-0 bg-black/50" onclick="closeModal()"></div>
+  
+  <!-- Conteúdo da modal -->
+  <div class="relative bg-ocean-900 rounded-xl border border-ocean-700 p-6 max-w-sm shadow-2xl">
+    <div class="mb-4">
+      <h2 id="modal-title" class="text-lg font-semibold text-white mb-2">Confirmar ação</h2>
+      <p id="modal-message" class="text-ocean-200 text-[13px] leading-relaxed">Tem certeza que deseja continuar?</p>
+    </div>
+    
+    <div class="flex gap-3 justify-end">
+      <button onclick="closeModal()"
+        class="px-4 py-2 rounded-lg border border-ocean-700 bg-ocean-850
+               text-ocean-100 hover:border-ocean-600 hover:bg-ocean-800 transition-all
+               text-[12px] font-medium">
+        Cancelar
+      </button>
+      <button id="modal-confirm-btn" onclick="confirmAction()"
+        class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all
+               text-[12px] font-semibold">
+        Confirmar
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     LOG BAR
+══════════════════════════════════════════════ -->
+<footer class="h-11 bg-ocean-900 border-t border-ocean-700 flex items-center overflow-hidden shrink-0">
+  <div class="px-4 text-[9px] font-semibold text-ocean-300 uppercase tracking-[.8px]
+              whitespace-nowrap border-r border-ocean-700 h-full flex items-center">
+    Eventos
+  </div>
+  <div class="flex gap-2 px-4 overflow-hidden" id="log-items">
+    <div class="text-[11px] px-2.5 py-1 bg-ocean-850 border border-ocean-700
+                rounded text-ocean-100 whitespace-nowrap">
+      <span class="text-ocean-400 mr-1.5">T=0h</span>Simulação iniciada
+    </div>
+  </div>
+</footer>
+
+
+<!-- ══════════════════════════════════════════════
+     SCRIPT
+══════════════════════════════════════════════ -->
+<script>
+/* ─── Configuração ─────────────────────────────────────── */
+// Detecta automaticamente a URL da API
+// Em desenvolvimento local: http://localhost:8000
+// Em produção (Render): https://seu-backend.onrender.com
+const API_URL = (() => {
+  // Se é localhost, usa a mesma origem
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    return location.origin;
+  }
+  // Se é arquivo local (file://), tenta localhost
+  if (location.protocol === 'file:') {
+    return 'http://localhost:8000';
+  }
+  // Em produção, verifica variável de ambiente (Vercel)
+  // Padrão: mesma origem (útil se ambos estão no mesmo domínio)
+  // Para Render separado, adicione a URL manualmente no Vercel
+  return location.origin;
+})();
+
+// Berços preferidos por tipo (para exibição no card da fila)
+const TIPO_BERCOS = {
+  granel:      ['B1', 'B4'],
+  conteiner:   ['B2', 'B4'],
+  combustivel: ['B3'],
+  marinha:     ['B4', 'B1', 'B2', 'B3'],
+  cont_refrig: ['B2', 'B4'],
+};
+
+/* ─── Modal de confirmação ──────────────────────────────── */
+let pendingAction = null;
+
+function showModal(title, message, action) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-message').textContent = message;
+  pendingAction = action;
+  document.getElementById('modal-confirm').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modal-confirm').classList.add('hidden');
+  pendingAction = null;
+}
+
+function confirmAction() {
+  if (pendingAction) pendingAction();
+  closeModal();
+}
+
+// Fechar modal ao clicar fora (no backdrop)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+/* ─── HTTP helpers ──────────────────────────────────────── */
+async function api(path, opts) {
+  const r = await fetch(API_URL + path, opts);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    alert(e.detail || 'Erro na requisição');
+    throw e;
+  }
+  return r.json();
+}
+const post = body => ({
+  method:  'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body:    JSON.stringify(body),
+});
+
+/* ─── Polling ───────────────────────────────────────────── */
+async function pull() {
+  try {
+    render(await api('/state'));
+  } catch {
+    document.getElementById('hd-clock').textContent = '— offline —';
+  }
+}
+
+/* ─── Render raiz ───────────────────────────────────────── */
+function render(s) {
+  document.getElementById('hd-clock').textContent = `T = ${s.clock}h`;
+  document.getElementById('hd-pol').textContent   = s.pol_label;
+  const sel = document.getElementById('f-pol');
+  if (sel.value !== s.politica) sel.value = s.politica;
+  renderBerths(s.bercos);
+  renderQueue(s.fila);
+  renderMetrics(s.metricas);
+  renderLog(s.events);
+}
+
+/* ─── Berços ────────────────────────────────────────────── */
+function renderBerths(bercos) {
+  /*
+   * Inline styles aqui são EXCLUSIVAMENTE para valores dinâmicos
+   * vindos de dados (cores de tipo de navio, largura de barra de progresso).
+   * Layout e espaçamento usam classes Tailwind.
+   */
+  document.getElementById('berths').innerHTML = Object.entries(bercos).map(([bid, b]) => {
+    const n   = b.navio;
+    const cor = n ? n.cor : '#1d2c3f';
+
+    const body = n
+      ? `<div>
+           <span class="inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full mb-1.5 leading-none"
+                 style="background:${n.cor}18;color:${n.cor};border:1px solid ${n.cor}40">
+             ${n.tipo_nome}
+           </span>
+           <div class="text-[12px] font-semibold mb-2 truncate leading-tight text-white">${n.nome}</div>
+           <div class="h-1.5 rounded-full overflow-hidden mb-1.5" style="background:#0d1520">
+             <div class="h-full rounded-full transition-all duration-500"
+                  style="width:${n.progresso}%;background:${n.cor}"></div>
+           </div>
+           <div class="text-[10px] text-ocean-300">${n.t_rest}h restantes · ${n.progresso.toFixed(0)}%</div>
+         </div>`
+      : `<div class="flex items-center justify-center h-14 gap-1.5 text-ocean-500 text-[11px]">
+           <div class="w-1.5 h-1.5 rounded-full animate-blink" style="background:#28c76f"></div>
+           Livre
+         </div>`;
+
+    return `
+      <div class="rounded-xl overflow-hidden bg-ocean-900 border border-ocean-700">
+        <div class="px-2.5 py-1.5 bg-ocean-850 border-b border-ocean-700"
+             style="border-top:4px solid ${cor}">
+          <div class="text-[11px] font-semibold truncate text-ocean-100">${b.nome}</div>
+          <div class="text-[9px] text-ocean-400">${b.desc}</div>
+        </div>
+        <div class="p-2.5 min-h-[76px]">${body}</div>
+      </div>`;
+  }).join('');
+}
+
+/* ─── Fila ──────────────────────────────────────────────── */
+function renderQueue(fila) {
+  document.getElementById('q-cnt').textContent = fila.length;
+  const el = document.getElementById('q-list');
+
+  if (!fila.length) {
+    el.innerHTML = `
+      <div class="flex flex-col items-center justify-center h-32 gap-2 text-ocean-500 text-[12px]">
+        <span class="text-3xl opacity-30">⚓</span>
+        Nenhum navio aguardando
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = fila.map(n => {
+    const posColor = n.pos === 1 ? '#28c76f' : n.pos === 2 ? '#e8a838' : '#2d4560';
+    const bercos   = (TIPO_BERCOS[n.tipo] || []).join(', ');
+
+    return `
+      <div class="flex items-stretch gap-2.5 mb-2 rounded-xl overflow-hidden
+                  bg-ocean-900 border border-ocean-700 hover:border-ocean-600 transition-colors">
+        <div class="w-1 shrink-0" style="background:${n.cor}"></div>
+        <div class="flex items-center gap-2 flex-1 min-w-0 pr-2.5 py-2.5">
+          <div class="text-[12px] font-bold tabular-nums w-6 text-center shrink-0 font-mono"
+               style="color:${posColor}">#${n.pos}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap mb-0.5">
+              <span class="text-[12px] font-medium text-white truncate">${n.nome}</span>
+              <span class="pb pb-${n.prio}">${n.prio_label}</span>
+            </div>
+            <div class="text-[10px] text-ocean-400">
+              ${n.tipo_nome} · ${n.ts}h serviço · ${n.t_espera}h espera
+            </div>
+            <div class="text-[10px] mt-0.5 font-mono" style="color:${n.cor}99">
+              Berços: ${bercos}
+            </div>
+          </div>
+          <button onclick="doRem('${n.id}')"
+            class="shrink-0 text-[11px] px-1.5 py-0.5 rounded border border-ocean-700
+                   text-ocean-400 hover:text-red-400 hover:border-red-400/40 transition-colors bg-transparent">
+            ✕
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ─── Métricas ──────────────────────────────────────────── */
+function renderMetrics(m) {
+  const rc = m.rho > 75 ? '#ef5350' : m.rho > 50 ? '#e8a838' : '#28c76f';
+  const lc = m.Lq  > 4  ? '#ef5350' : m.Lq  > 2  ? '#e8a838' : '#3fa8e0';
+  const wc = m.Wq  > 12 ? '#ef5350' : m.Wq  > 6  ? '#e8a838' : '#3fa8e0';
+
+  const kpis = [
+    { v: m.L,         l: 'L · sistema',  c: '#3fa8e0' },
+    { v: m.Lq,        l: 'Lq · fila',   c: lc        },
+    { v: m.rho + '%', l: 'ρ · utiliz.', c: rc        },
+    { v: m.Wq + 'h',  l: 'Wq · espera', c: wc        },
+    { v: m.W  + 'h',  l: 'W · sistema', c: '#3fa8e0' },
+    { v: m.atendidos, l: 'Atendidos',   c: '#28c76f' },
+  ];
+
+  document.getElementById('metrics').innerHTML = kpis.map(k =>
+    `<div class="rounded-xl p-2.5 text-center bg-ocean-900 border border-ocean-700">
+       <div class="font-mono text-[18px] font-bold tabular-nums leading-none"
+            style="color:${k.c}">${k.v}</div>
+       <div class="text-[9px] mt-1.5 text-ocean-400">${k.l}</div>
+     </div>`
+  ).join('');
+}
+
+/* ─── Log de eventos ────────────────────────────────────── */
+function renderLog(evs) {
+  if (!evs?.length) return;
+  document.getElementById('log-items').innerHTML = evs.slice(0, 10).map(e =>
+    `<div class="text-[11px] px-2.5 py-1 bg-ocean-850 border border-ocean-700
+                rounded whitespace-nowrap shrink-0 text-ocean-100">
+       <span class="text-ocean-400 mr-1.5">T=${e.t}h</span>${e.msg}
+     </div>`
+  ).join('');
+}
+
+/* ─── Ações ─────────────────────────────────────────────── */
+async function doAdd() {
+  const nome = document.getElementById('f-nome').value.trim();
+  if (!nome) { alert('Informe o nome do navio'); return; }
+  const body = { nome, tipo: document.getElementById('f-tipo').value };
+  const tsv  = document.getElementById('f-ts').value;
+  if (tsv) body.ts = parseFloat(tsv);
+  await api('/ships', post(body));
+  document.getElementById('f-nome').value = '';
+  document.getElementById('f-ts').value   = '';
+  pull();
+}
+
+async function doRem(id) { await api('/ships/' + id, { method: 'DELETE' }); pull(); }
+async function doAdv(h)  { await api('/advance', post({ horas: h })); pull(); }
+
+async function doAdvC() {
+  const v = parseFloat(document.getElementById('f-adv').value);
+  if (!v || v <= 0) return;
+  await doAdv(v);
+  document.getElementById('f-adv').value = '';
+}
+
+async function doPol() {
+  await api('/policy', post({ politica: document.getElementById('f-pol').value }));
+  pull();
+}
+
+async function doDemo() {
+  showModal(
+    '📦 Cenário Demo',
+    'Carregar um cenário demonstrativo com 9 navios representativos do Porto do Itaqui?',
+    async () => {
+      await api('/demo', { method: 'POST' });
+      pull();
+    }
+  );
+}
+
+async function doReset() {
+  showModal(
+    '⚠️ Reiniciar Simulação',
+    'Tem certeza que deseja reiniciar? Todos os dados atuais serão perdidos.',
+    async () => {
+      await api('/reset', { method: 'POST' });
+      pull();
+    }
+  );
+}
+
+/* ─── Init ──────────────────────────────────────────────── */
+setInterval(pull, 2000);
+pull();
+</script>
+</body>
+</html>
