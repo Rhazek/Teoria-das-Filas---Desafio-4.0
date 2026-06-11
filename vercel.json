@@ -1,5 +1,15 @@
 {
   "buildCommand": "",
   "outputDirectory": ".",
-  "installCommand": ""
+  "installCommand": "",
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/frontend.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend.html"
+    }
+  ]
 }
